@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>급여전표 연동</title>
+<meta name="description" content="급여 마감 뒤 급여전표를 조회해 계정을 맞추고, 이카운트 자동 입력과 SAP 업로드 파일로 나누는 과정을 눌러 보는 제안용 데모예요. 가상 회사·가상 데이터, 서버 없음.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23172033'/%3E%3Cpath d='M9 11h14M9 16h14M9 21h8' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='22' cy='21' r='2.6' fill='%232F6FDE'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style id="tokens">
+:root{
+  color-scheme: light;
+  --brand:#2F6FDE; --brand-hover:#2259BD; --brand-text:#1F55B5; --brand-tint:#EDF3FD;
+  --ring:0 0 0 3px rgba(47,111,222,.30);
+  --page:#FFFFFF; --sec:#F5F6F8; --soft:#FAFBFC; --line:#E6E8EC; --line-2:#EEF0F3;
+  --ink:#172033; --ink-2:#465063; --mut:#5F6878; --mut-2:#848C99;
+  --ok:#147A4C; --ok-bg:#EAF6EF; --warn:#8A5A00; --warn-bg:#FFF5DF; --bad:#B42330; --bad-bg:#FDEDEE;
+  --font:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:16px; --r-s:10px;
+}
+</style>
+<style>
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--page);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.6;word-break:keep-all;overflow-wrap:break-word;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p,ul,ol,dl,dd,figure{margin:0}
+ul,ol{padding:0;list-style:none}
+button,select,input{font:inherit;color:inherit}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:12.5px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+:focus-visible{outline:none;box-shadow:var(--ring);border-radius:8px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+.band{background:var(--ink);color:#fff;font-size:13px;line-height:1.5;padding:9px 16px;text-align:center}
+.band b{font-weight:600;margin-right:6px}
+
+header.top{border-bottom:1px solid var(--line)}
+.top-in{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:68px}
+.brand{display:flex;align-items:center;gap:12px}
+.mark{width:36px;height:36px;border-radius:10px;background:var(--ink);display:grid;place-items:center;flex:none}
+.brand strong{display:block;font-size:16px;font-weight:700;letter-spacing:-.01em}
+.brand span{display:block;font-size:13px;color:var(--mut)}
+.period{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2)}
+.period select{border:1px solid var(--line);border-radius:var(--r-s);background:#fff;padding:8px 30px 8px 12px;min-height:40px;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),linear-gradient(135deg,var(--mut) 50%,transparent 50%);background-position:calc(100% - 15px) 17px,calc(100% - 10px) 17px;background-size:5px 5px;background-repeat:no-repeat}
+
+/* 상태 머리 */
+.hero{padding-top:36px;padding-bottom:28px}
+.eyebrow{font-size:13px;font-weight:600;color:var(--brand-text);margin-bottom:8px}
+.hero h1{font-size:30px;line-height:1.3;letter-spacing:-.025em;font-weight:750}
+.hero p.sub{margin-top:8px;color:var(--mut);font-size:15px}
+.hero-row{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:var(--r-s);border:1px solid var(--line);background:#fff;font-weight:600;font-size:14.5px;cursor:pointer;transition:background .15s,border-color .15s}
+.btn:hover{background:var(--soft);border-color:#D5D9E0}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.primary:hover{background:var(--brand-hover)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sm{min-height:40px;padding:0 14px;font-size:13.5px}
+
+/* 단계 */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-top:28px}
+.step{padding:18px 20px;border-right:1px solid var(--line);position:relative;background:#fff}
+.step:last-child{border-right:0}
+.step .k{font-size:12.5px;color:var(--mut-2);font-weight:600}
+.step .t{font-size:15.5px;font-weight:700;margin-top:2px}
+.step .d{font-size:13px;color:var(--mut);margin-top:4px}
+.st{display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-size:12.5px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--sec);color:var(--ink-2)}
+.st::before{content:"";width:7px;height:7px;border-radius:50%;background:#B7BDC7}
+.st.ok{background:var(--ok-bg);color:var(--ok)}.st.ok::before{background:var(--ok)}
+.st.warn{background:var(--warn-bg);color:var(--warn)}.st.warn::before{background:#E09A12}
+.st.bad{background:var(--bad-bg);color:var(--bad)}.st.bad::before{background:var(--bad)}
+.st.run{background:var(--brand-tint);color:var(--brand-text)}.st.run::before{background:var(--brand);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.st.run::before{animation:none}}
+.step.on{box-shadow:inset 0 3px 0 var(--brand)}
+
+/* 탭 */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-top:8px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{border:0;background:none;padding:14px 14px 13px;min-height:48px;font-size:14.5px;font-weight:600;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+.tab .cnt{display:inline-block;margin-left:6px;font-size:11.5px;min-width:18px;padding:0 6px;border-radius:999px;background:var(--bad-bg);color:var(--bad);font-weight:700;line-height:18px}
+.panel{padding:28px 0 56px}
+.panel-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.panel h2{font-size:20px;letter-spacing:-.015em;font-weight:700}
+.panel .lead{color:var(--mut);font-size:14px;margin-top:4px}
+
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r-s);padding:3px;background:var(--sec)}
+.seg button{border:0;background:none;min-height:36px;padding:0 14px;border-radius:7px;font-size:13.5px;font-weight:600;color:var(--mut);cursor:pointer}
+.seg button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(16,24,40,.08)}
+
+/* 표 */
+.tablebox{border:1px solid var(--line);border-radius:var(--r);overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:760px}
+th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line-2);white-space:nowrap}
+thead th{font-size:12.5px;color:var(--mut);font-weight:600;background:var(--soft)}
+td.r,th.r{text-align:right}
+tbody tr:last-child td{border-bottom:0}
+tr.err td{background:var(--bad-bg)}
+tr.err .acct{color:var(--bad);font-weight:600}
+tfoot td{background:var(--soft);font-weight:700;border-top:1px solid var(--line);border-bottom:0}
+.empty{padding:44px 20px;text-align:center;color:var(--mut);border:1px dashed var(--line);border-radius:var(--r);font-size:14px}
+.empty strong{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
+
+.checks{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.chk{display:flex;align-items:center;gap:8px;font-size:13.5px;padding:8px 12px;border-radius:var(--r-s);background:var(--sec);color:var(--ink-2)}
+.chk i{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:800;color:#fff;background:#B7BDC7;flex:none}
+.chk.ok i{background:var(--ok)}.chk.bad i{background:var(--bad)}
+.chk.bad{background:var(--bad-bg);color:var(--bad)}
+
+/* 계정 맞춤표 */
+.map{display:grid;gap:0;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.map-row{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line-2)}
+.map-row:last-child{border-bottom:0}
+.map-row.h{background:var(--soft);font-size:12.5px;color:var(--mut);font-weight:600;padding:10px 16px}
+.map-row .nm{font-weight:600}
+.map-row .nm small{display:block;font-weight:400;color:var(--mut);font-size:12.5px}
+.map-row.miss{background:var(--bad-bg)}
+.map-row select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 10px;font-size:13.5px}
+.map-row.miss select[data-kind="mfg"]{border-color:var(--bad)}
+.na{font-size:13px;color:var(--mut-2)}
+.map-row .lbl{display:none;font-size:12px;color:var(--mut)}
+
+/* 보내기 */
+.dest{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{border:1px solid var(--line);border-radius:var(--r);padding:22px;background:#fff;display:flex;flex-direction:column}
+.card h3{font-size:17px;font-weight:700}
+.card .how{font-size:13px;color:var(--mut);margin-top:2px}
+.card dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13.5px;margin:16px 0;padding:14px 0;border-top:1px solid var(--line-2);border-bottom:1px solid var(--line-2)}
+.card dt{color:var(--mut)}
+.card dd{font-weight:600;text-align:right}
+.card .foot{margin-top:auto;display:flex;flex-direction:column;gap:10px}
+.note{font-size:13px;color:var(--ink-2);background:var(--sec);border-radius:var(--r-s);padding:12px 14px;line-height:1.55}
+.note.bad{background:var(--bad-bg);color:var(--bad)}
+.note.ok{background:var(--ok-bg);color:var(--ok)}
+.toggle{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2);cursor:pointer;min-height:40px}
+.toggle input{width:18px;height:18px;accent-color:var(--brand)}
+
+/* 기록 */
+.log{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.log li{display:grid;grid-template-columns:76px 96px 1fr;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line-2);font-size:14px;align-items:baseline}
+.log li:last-child{border-bottom:0}
+.log time{color:var(--mut-2)}
+.log .who{font-size:12.5px;font-weight:600;color:var(--mut)}
+.log li.bad{background:var(--bad-bg)}
+.log li.skip{background:var(--warn-bg)}
+
+/* 개인정보 */
+.flow{display:grid;grid-template-columns:1fr 40px 1fr 40px 1fr;align-items:stretch;gap:0}
+.box{border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.box.in{background:var(--soft)}
+.box h3{font-size:15px;font-weight:700}
+.box p{font-size:13.5px;color:var(--ink-2);margin-top:6px}
+.box ul{margin-top:10px;display:grid;gap:4px;font-size:13px;color:var(--mut)}
+.box ul li::before{content:"· "}
+.arrow{display:grid;place-items:center;color:var(--mut-2)}
+.zone{border:1.5px dashed #C9CED6;border-radius:20px;padding:14px;position:relative;grid-column:1 / span 3;display:grid;grid-template-columns:1fr 40px 1fr;gap:0}
+.zone-tag{position:absolute;top:-11px;left:16px;background:#fff;padding:0 8px;font-size:12.5px;font-weight:700;color:var(--ink-2)}
+.rules{margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:10px 24px;font-size:14px}
+.rules li{padding-left:14px;position:relative;color:var(--ink-2)}
+.rules li::before{content:"";position:absolute;left:0;top:10px;width:6px;height:6px;border-radius:50%;background:var(--brand)}
+
+footer{border-top:1px solid var(--line);padding:24px 0 40px;font-size:13px;color:var(--mut)}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:calc(100% - 32px);text-align:center;z-index:9}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media (max-width:900px){
+  .steps{grid-template-columns:1fr 1fr}
+  .step:nth-child(2){border-right:0}
+  .step:nth-child(-n+2){border-bottom:1px solid var(--line)}
+  .dest{grid-template-columns:1fr}
+  .flow{grid-template-columns:1fr}
+  .zone{grid-column:auto;grid-template-columns:1fr}
+  .arrow{height:32px;transform:rotate(90deg)}
+}
+@media (max-width:600px){
+  .wrap{padding:0 16px}
+  .band{font-size:12.5px;text-align:left}
+  .top-in{flex-wrap:wrap;padding-top:12px;padding-bottom:12px;gap:10px}
+  .period{width:100%}.period select{flex:1}
+  .hero{padding-top:24px;padding-bottom:20px}
+  .hero h1{font-size:23px}
+  .actions{width:100%}.actions .btn{flex:1 1 auto}.actions .btn.primary{flex-basis:100%}
+  .steps{grid-template-columns:1fr;margin-top:20px}
+  .step{border-right:0;border-bottom:1px solid var(--line);padding:14px 16px;display:grid;grid-template-columns:1fr auto;column-gap:12px;align-items:center}
+  .step:last-child{border-bottom:0}
+  .step .d{min-height:0;grid-column:1}
+  .step .st{grid-row:1 / span 3;grid-column:2;margin-top:0}
+  .map-row.h{display:none}
+  .map-row{grid-template-columns:1fr 1fr;gap:8px 10px}
+  .map-row .nm{grid-column:1 / -1}
+  .map-row .lbl{display:block}
+  .map-row .cell-dept{display:none}
+  .log li{grid-template-columns:64px 1fr}
+  .log li .msg{grid-column:1 / -1}
+  .rules{grid-template-columns:1fr}
+  .panel h2{font-size:18px}
+}
+</style>
+</head>
+<body>
+<div class="band" role="note"><b>제안용 데모 · 예시</b>가상 회사와 가상 급여 데이터예요. 화면 모형이라 서버가 없고, 아마란스10·이카운트·SAP에 실제로 연결하지 않아요.</div>
+
+<header class="top">
+  <div class="wrap top-in">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h8"/></svg></div>
+      <div><strong>급여전표 연동</strong><span>해솔정밀 (가상 회사) · 회계팀</span></div>
+    </div>
+    <label class="period">귀속 월
+      <select id="period" aria-label="귀속 월">
+        <option value="2026-10" selected>2026년 10월 · 정기 급여</option>
+        <option value="2026-09">2026년 9월 · 정기 급여 (처리 끝)</option>
+      </select>
+    </label>
+  </div>
+</header>
+
+<main>
+<section class="wrap hero" aria-labelledby="h-title">
+  <div class="hero-row">
+    <div>
+      <p class="eyebrow" id="h-eyebrow">아마란스10 급여 마감 대기</p>
+      <h1 id="h-title">10월 급여 마감을 기다리고 있어요</h1>
+      <p class="sub" id="h-sub">급여 담당자가 아마란스10에서 마감하면 급여전표를 가져와 계정을 맞추고, 이카운트와 SAP용 전표를 만들어요.</p>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="btn-close" type="button">급여 마감 신호 받기 (흉내)</button>
+      <button class="btn" id="btn-reset" type="button">처음으로</button>
+    </div>
+  </div>
+
+  <ol class="steps" aria-label="처리 단계">
+    <li class="step" data-step="1"><div class="k">1단계 · 아마란스10</div><div class="t">급여 마감 감지</div><div class="d">마감 처리 시점에 연동이 시작돼요</div><span class="st" data-s>대기</span></li>
+    <li class="step" data-step="2"><div class="k">2단계 · 아마란스10</div><div class="t">급여전표 조회</div><div class="d">부서·계정별 합계만 가져와요</div><span class="st" data-s>대기</span></li>
+    <li class="step" data-step="3"><div class="k">3단계 · 이 프로그램</div><div class="t">계정 맞추기·검증</div><div class="d">차대 일치, 계정·부서 코드 확인</div><span class="st" data-s>대기</span></li>
+    <li class="step" data-step="4"><div class="k">4단계 · 이카운트 / SAP</div><div class="t">보내기·파일 만들기</div><div class="d">자동 전송, 안 되면 업로드 파일</div><span class="st" data-s>대기</span></li>
+  </ol>
+  <p class="sr" aria-live="polite" id="live"></p>
+</section>
+
+<div class="wrap">
+  <div class="tabs" role="tablist" aria-label="화면">
+    <button class="tab" role="tab" id="t-slip" aria-controls="p-slip" aria-selected="true">전표 미리보기<span class="cnt" id="cnt-err" hidden>0</span></button>
+    <button class="tab" role="tab" id="t-map" aria-controls="p-map" aria-selected="false" tabindex="-1">계정 맞춤표</button>
+    <button class="tab" role="tab" id="t-send" aria-controls="p-send" aria-selected="false" tabindex="-1">보내기·파일</button>
+    <button class="tab" role="tab" id="t-log" aria-controls="p-log" aria-selected="false" tabindex="-1">실행 기록</button>
+    <button class="tab" role="tab" id="t-priv" aria-controls="p-priv" aria-selected="false" tabindex="-1">급여 정보 보호</button>
+  </div>
+
+  <!-- 전표 미리보기 -->
+  <section class="panel" role="tabpanel" id="p-slip" aria-labelledby="t-slip">
+    <div class="panel-head">
+      <div><h2>급여전표 미리보기</h2><p class="lead" id="slip-lead">마감 신호를 받으면 여기에 전표가 생겨요.</p></div>
+      <div class="seg" role="group" aria-label="양식 보기">
+        <button type="button" data-fmt="std" aria-pressed="true">공통</button>
+        <button type="button" data-fmt="ecount" aria-pressed="false">이카운트 양식</button>
+        <button type="button" data-fmt="sap" aria-pressed="false">SAP 양식</button>
+      </div>
+    </div>
+    <div id="slip-empty" class="empty"><strong>아직 전표가 없어요</strong>위의 ‘급여 마감 신호 받기’를 눌러 보세요.</div>
+    <div id="slip-wrap" hidden>
+      <div class="tablebox"><table><thead id="slip-head"></thead><tbody id="slip-body"></tbody><tfoot id="slip-foot"></tfoot></table></div>
+      <div class="checks" id="checks"></div>
+      <p class="lead" style="margin-top:12px;font-size:13px">계정 코드와 양식 컬럼은 예시예요. 실제 컬럼은 받으실 SAP·이카운트 전표 양식에 맞춰요.</p>
+    </div>
+  </section>
+
+  <!-- 계정 맞춤표 -->
+  <section class="panel" role="tabpanel" id="p-map" aria-labelledby="t-map" hidden>
+    <div class="panel-head"><div><h2>급여 항목 → 계정 맞춤표</h2><p class="lead">한 번 정해 두면 다음 달부터 그대로 써요. 새 급여 항목이 생기면 빨간 줄로 알려 줘요.</p></div></div>
+    <div class="map" id="map"></div>
+  </section>
+
+  <!-- 보내기 -->
+  <section class="panel" role="tabpanel" id="p-send" aria-labelledby="t-send" hidden>
+    <div class="panel-head"><div><h2>보내기와 업로드 파일</h2><p class="lead">자동 전송이 안 되는 경우에도 같은 전표를 파일로 받아 직접 올릴 수 있어요.</p></div></div>
+    <div class="dest">
+      <article class="card" aria-labelledby="c-ec">
+        <h3 id="c-ec">이카운트</h3>
+        <p class="how">Open API 자동 입력 (2단계) · 안 되면 업로드 파일</p>
+        <dl><dt>전표 줄 수</dt><dd class="num" id="ec-lines">-</dd><dt>차변 합계</dt><dd class="num" id="ec-sum">-</dd><dt>상태</dt><dd id="ec-state">전표 없음</dd></dl>
+        <div class="foot">
+          <label class="toggle"><input type="checkbox" id="ec-fail"> 실패 섞기: 이카운트에 없는 부서 코드</label>
+          <div class="note" id="ec-note">한 전표는 통째로 들어가거나 통째로 안 들어가요. 반쯤 들어간 전표는 남기지 않아요.</div>
+          <button class="btn primary" id="ec-send" type="button" disabled>이카운트로 보내기 (흉내)</button>
+          <button class="btn" id="ec-file" type="button" disabled>이카운트 업로드 파일 받기 (.csv)</button>
+        </div>
+      </article>
+      <article class="card" aria-labelledby="c-sap">
+        <h3 id="c-sap">SAP</h3>
+        <p class="how">업로드 파일 (1단계) · 자동 전송은 SAP 환경 확인 후</p>
+        <dl><dt>전표 줄 수</dt><dd class="num" id="sap-lines">-</dd><dt>차변 합계</dt><dd class="num" id="sap-sum">-</dd><dt>상태</dt><dd id="sap-state">전표 없음</dd></dl>
+        <div class="foot">
+          <div class="note">SAP 제품(Business One, S/4HANA 등)과 접속 방식에 따라 자동 전송 방법이 달라요. 확인 전까지는 받으신 업로드 양식대로 파일을 만들어요.</div>
+          <button class="btn primary" id="sap-file" type="button" disabled>SAP 업로드 파일 받기 (.csv)</button>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 기록 -->
+  <section class="panel" role="tabpanel" id="p-log" aria-labelledby="t-log" hidden>
+    <div class="panel-head"><div><h2>실행 기록</h2><p class="lead">언제, 무엇을, 누가 보냈는지 남겨요. 같은 마감을 두 번 받아도 두 번 보내지 않아요.</p></div></div>
+    <ol class="log" id="log"></ol>
+  </section>
+
+  <!-- 개인정보 -->
+  <section class="panel" role="tabpanel" id="p-priv" aria-labelledby="t-priv" hidden>
+    <div class="panel-head"><div><h2>급여 정보는 어디까지 가나요</h2><p class="lead">개인별 급여는 회사 서버 밖으로 나가지 않게 설계해요.</p></div></div>
+    <div class="flow">
+      <div class="zone">
+        <span class="zone-tag">회사 서버 안</span>
+        <div class="box in"><h3>아마란스10</h3><p>급여 마감, 급여전표</p><ul><li>개인별 급여는 여기 그대로</li></ul></div>
+        <div class="arrow" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        <div class="box in"><h3>연동 프로그램</h3><p>회사 서버나 회사 클라우드에 설치</p><ul><li>부서·계정별 합계만 다룸</li><li>API 키는 서버 설정에만 보관</li><li>접속·전송 기록 남김</li></ul></div>
+      </div>
+      <div class="arrow" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+      <div class="box"><h3>이카운트 · SAP</h3><p>회사가 이미 쓰는 시스템</p><ul><li>합계 전표만 들어감</li><li>사람 이름·주민번호 없음</li></ul></div>
+    </div>
+    <ul class="rules">
+      <li>개발 중에는 이름을 가린 시험 데이터만 써요.</li>
+      <li>운영 데이터는 회사 서버에서만 확인하고, 개발자 PC로 옮기지 않아요.</li>
+      <li>업로드 파일과 실행 기록은 정한 기간만 서버에 두고 지워요(기간은 협의).</li>
+      <li>개인별 내역이 꼭 필요한 양식이면 미리 말씀드리고 범위를 정해요.</li>
+    </ul>
+  </section>
+</div>
+</main>
+
+<footer><div class="wrap">해솔정밀은 가상 회사이고, 금액·코드·양식 컬럼은 모두 예시예요. 아마란스10 API 항목과 SAP·이카운트 필수 컬럼은 받은 뒤 맞춰요.</div></footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+  const won = n => n.toLocaleString('ko-KR');
+
+  // ---- 가상 데이터 (부서별 합계) ----
+  const depts = [
+    { code: 'D110', ec: '110', name: '생산1팀', kind: 'mfg', head: 18 },
+    { code: 'D120', ec: '120', name: '생산2팀', kind: 'mfg', head: 14 },
+    { code: 'D210', ec: '210', name: '관리팀', kind: 'sga', head: 6 },
+    { code: 'D310', ec: '310', name: '영업팀', kind: 'sga', head: 5 }
+  ];
+  // 지급 항목: 부서별 금액 (원)
+  const pay = {
+    base:  { label: '기본급',       amt: [61200000, 47600000, 22800000, 19500000] },
+    over:  { label: '연장근로수당', amt: [8640000, 6120000, 0, 0] },
+    night: { label: '야간근로수당', amt: [3420000, 2260000, 0, 0], isNew: true },
+    meal:  { label: '식대(비과세)', amt: [3600000, 2800000, 1200000, 1000000] }
+  };
+  // 공제 항목 비율(예시)
+  const ded = [
+    { key: 'np',  label: '국민연금',     rate: 0.045 },
+    { key: 'hi',  label: '건강보험',     rate: 0.03545 },
+    { key: 'lt',  label: '장기요양보험', rate: 0.0046 },
+    { key: 'ei',  label: '고용보험',     rate: 0.009 },
+    { key: 'it',  label: '소득세',       rate: 0.031 },
+    { key: 'lit', label: '지방소득세',   rate: 0.0031 }
+  ];
+  const accts = {
+    '50300': '임금 (제조)', '50400': '제수당 (제조)', '80100': '급여 (판관)', '80200': '제수당 (판관)',
+    '81100': '복리후생비', '25400': '예수금', '25300': '미지급금'
+  };
+  const defaultMap = {
+    base:  { mfg: '50300', sga: '80100' },
+    over:  { mfg: '50400', sga: '80200' },
+    night: { mfg: '',      sga: '' },
+    meal:  { mfg: '81100', sga: '81100' }
+  };
+
+  let S;
+  const fresh = () => ({ phase: 0, map: JSON.parse(JSON.stringify(defaultMap)), fmt: 'std', ec: 'none', sap: 'none', closed: false, log: [], processed: {} });
+  S = fresh();
+
+  // ---- 전표 만들기 ----
+  function buildLines() {
+    const lines = [];
+    let gross = 0;
+    depts.forEach((d, i) => {
+      Object.entries(pay).forEach(([k, p]) => {
+        const a = p.amt[i]; if (!a) return;
+        gross += a;
+        const code = S.map[k][d.kind];
+        lines.push({ side: 'D', acct: code, item: p.label, dept: d, amt: a, memo: `10월 ${p.label} (${d.name} ${d.head}명)`, key: k });
+      });
+    });
+    const taxable = gross - pay.meal.amt.reduce((a, b) => a + b, 0);
+    let dsum = 0;
+    ded.forEach(x => {
+      const a = Math.round(taxable * x.rate / 10) * 10; dsum += a;
+      lines.push({ side: 'C', acct: '25400', item: x.label, dept: null, amt: a, memo: `10월 급여 ${x.label} 예수` });
+    });
+    lines.push({ side: 'C', acct: '25300', item: '실지급액', dept: null, amt: gross - dsum, memo: '10월 급여 실지급 (11/10 지급 예정)' });
+    return lines;
+  }
+  const missing = ls => ls.filter(l => !l.acct);
+  const sums = ls => ({ d: ls.filter(l => l.side === 'D').reduce((a, l) => a + l.amt, 0), c: ls.filter(l => l.side === 'C').reduce((a, l) => a + l.amt, 0) });
+
+  // ---- 기록 ----
+  const now = () => { const t = new Date(); return t.toTimeString().slice(0, 8); };
+  function log(who, msg, cls = '') { S.log.unshift({ t: now(), who, msg, cls }); renderLog(); }
+
+  // ---- 그리기 ----
+  const HEAD = {
+    std: ['구분', '계정', '계정명', '부서', '차변', '대변', '적요'],
+    ecount: ['일자', '순서', '계정코드', '부서코드', '차변금액', '대변금액', '적요'],
+    sap: ['전기일', 'G/L 계정', '코스트센터', '차/대', '금액', '통화', '텍스트']
+  };
+  function rowCells(l, i) {
+    const dName = l.dept ? l.dept.name : '-';
+    const acct = l.acct || '미지정';
+    if (S.fmt === 'ecount') return ['20261031', i + 1, acct, l.dept ? l.dept.ec : '', l.side === 'D' ? won(l.amt) : '', l.side === 'C' ? won(l.amt) : '', l.memo];
+    if (S.fmt === 'sap') return ['2026.10.31', acct, l.dept ? l.dept.code : '', l.side === 'D' ? 'S' : 'H', won(l.amt), 'KRW', l.memo];
+    return [l.side === 'D' ? '차변' : '대변', acct, l.acct ? accts[l.acct] : `${l.item} · 계정 없음`, dName, l.side === 'D' ? won(l.amt) : '', l.side === 'C' ? won(l.amt) : '', l.memo];
+  }
+  const numCols = { std: [4, 5], ecount: [4, 5], sap: [4] };
+  function renderSlip() {
+    const has = S.phase >= 2;
+    $('#slip-empty').hidden = has; $('#slip-wrap').hidden = !has;
+    $$('.seg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.fmt === S.fmt));
+    const errN = has ? missing(buildLines()).length : 0;
+    const cnt = $('#cnt-err'); cnt.hidden = !errN; cnt.textContent = errN;
+    if (!has) { $('#slip-lead').textContent = '마감 신호를 받으면 여기에 전표가 생겨요.'; return; }
+    const ls = buildLines(), s = sums(ls), nc = numCols[S.fmt];
+    $('#slip-lead').textContent = `2026년 10월 정기 급여 · 4개 부서 43명 · 전표 ${ls.length}줄 (개인별이 아니라 부서·계정 합계)`;
+    $('#slip-head').innerHTML = '<tr>' + HEAD[S.fmt].map((h, i) => `<th scope="col" class="${nc.includes(i) ? 'r' : ''}">${h}</th>`).join('') + '</tr>';
+    $('#slip-body').innerHTML = ls.map((l, i) => `<tr class="${l.acct ? '' : 'err'}">` + rowCells(l, i).map((c, j) => `<td class="${nc.includes(j) ? 'r num' : ''}${j === (S.fmt === 'std' ? 1 : 2) ? ' acct mono' : ''}">${c}</td>`).join('') + '</tr>').join('');
+    const foot = HEAD[S.fmt].map(() => '');
+    foot[0] = '합계';
+    if (S.fmt === 'sap') { foot[4] = `차 ${won(s.d)} / 대 ${won(s.c)}`; } else { foot[4] = won(s.d); foot[5] = won(s.c); }
+    $('#slip-foot').innerHTML = '<tr>' + foot.map((c, j) => `<td class="${nc.includes(j) ? 'r num' : ''}">${c}</td>`).join('') + '</tr>';
+    const miss = missing(ls).length;
+    const chk = [
+      { ok: s.d === s.c, t: s.d === s.c ? `차변·대변 일치 (${won(s.d)}원)` : '차변·대변 불일치' },
+      { ok: !miss, t: miss ? `계정 없는 줄 ${miss}개 · 계정 맞춤표에서 정해 주세요` : '모든 줄에 계정 있음' },
+      { ok: true, t: '부서 코드 4개 확인' },
+      { ok: true, t: '마감 차수 1 · 처음 받은 마감' }
+    ];
+    $('#checks').innerHTML = chk.map(c => `<div class="chk ${c.ok ? 'ok' : 'bad'}"><i aria-hidden="true">${c.ok ? '✓' : '!'}</i>${c.t}</div>`).join('');
+  }
+  function renderMap() {
+    const opt = (sel) => '<option value="">계정 고르기</option>' + Object.entries(accts).filter(([c]) => c < '25500' ? false : true).map(([c, n]) => `<option value="${c}" ${c === sel ? 'selected' : ''}>${c} ${n}</option>`).join('');
+    let h = '<div class="map-row h"><span>급여 항목</span><span class="cell-dept">해당 부서</span><span>생산 부서 계정</span><span>관리·영업 부서 계정</span></div>';
+    Object.entries(pay).forEach(([k, p]) => {
+      const m = S.map[k];
+      const deptTxt = k === 'night' ? '생산1·2팀' : (k === 'over' ? '생산1·2팀' : '전 부서');
+      h += `<div class="map-row ${(!m.mfg) ? 'miss' : ''}"><div class="nm">${p.label}<small>${p.isNew && !m.mfg ? '이번 달 처음 나온 항목 · 계정을 정해 주세요' : '지급 항목'}</small></div>
+      <span class="cell-dept">${deptTxt}</span>
+      <label><span class="lbl">생산 부서</span><select data-k="${k}" data-kind="mfg" aria-label="${p.label} 생산 부서 계정">${opt(m.mfg)}</select></label>
+      ${k === 'night' ? '<span class="na"><span class="lbl">관리·영업</span>해당 부서 없음</span>' : `<label><span class="lbl">관리·영업</span><select data-k="${k}" data-kind="sga" aria-label="${p.label} 관리·영업 부서 계정">${opt(m.sga)}</select></label>`}</div>`;
+    });
+    h += `<div class="map-row"><div class="nm">공제 ${ded.length}항목<small>${ded.map(x => x.label).join('·')} · 대변</small></div><span class="cell-dept">전 부서</span><span class="mono">25400 예수금</span><span class="mono">25400 예수금</span></div>`;
+    h += `<div class="map-row"><div class="nm">실지급액<small>대변</small></div><span class="cell-dept">전 부서</span><span class="mono">25300 미지급금</span><span class="mono">25300 미지급금</span></div>`;
+    $('#map').innerHTML = h;
+  }
+  function renderSteps() {
+    const st = { 1: ['대기', ''], 2: ['대기', ''], 3: ['대기', ''], 4: ['대기', ''] };
+    if (S.phase >= 1) st[1] = S.phase === 1 ? ['받는 중', 'run'] : ['마감 확인', 'ok'];
+    if (S.phase >= 2) st[2] = ['전표 받음', 'ok'];
+    if (S.phase >= 2) {
+      const miss = missing(buildLines()).length;
+      st[3] = miss ? [`확인 필요 ${miss}건`, 'warn'] : ['검증 통과', 'ok'];
+    }
+    if (S.phase >= 2 && !missing(buildLines()).length) {
+      if (S.ec === 'sent' && S.sap === 'file') st[4] = ['끝', 'ok'];
+      else if (S.ec === 'failed') st[4] = ['이카운트 실패 · 파일로 대체 가능', 'bad'];
+      else if (S.ec === 'sending') st[4] = ['보내는 중', 'run'];
+      else if (S.ec === 'sent' || S.sap === 'file' || S.ec === 'file') st[4] = ['일부 끝', 'warn'];
+      else st[4] = ['보낼 준비', ''];
+    }
+    $$('.step').forEach(el => {
+      const [t, c] = st[el.dataset.step]; const b = $('[data-s]', el);
+      b.textContent = t; b.className = 'st ' + c;
+      el.classList.toggle('on', c === 'run' || c === 'warn' || c === 'bad');
+    });
+    // 머리 글
+    let eb = '아마란스10 급여 마감 대기', h = '10월 급여 마감을 기다리고 있어요', sub = '급여 담당자가 아마란스10에서 마감하면 급여전표를 가져와 계정을 맞추고, 이카운트와 SAP용 전표를 만들어요.';
+    if (S.phase === 1) { eb = '연동 중'; h = '급여전표를 가져오는 중이에요'; sub = '아마란스10에서 10월 정기 급여 마감(차수 1)을 확인했어요.'; }
+    if (S.phase >= 2) {
+      const miss = missing(buildLines()).length;
+      if (miss) { eb = '확인 필요'; h = `전표 ${buildLines().length}줄을 만들었고, 계정 없는 줄이 ${miss}개 있어요`; sub = '이번 달 처음 나온 ‘야간근로수당’의 계정을 계정 맞춤표에서 정해 주세요. 정하기 전에는 아무 데도 보내지 않아요.'; }
+      else if (S.ec === 'sent' && S.sap === 'file') { eb = '10월 급여 처리 끝'; h = '이카운트 입력과 SAP 업로드 파일까지 끝났어요'; sub = 'SAP는 받은 파일을 담당자가 업로드하면 돼요. 기록은 실행 기록에 남았어요.'; }
+      else if (S.ec === 'failed') { eb = '이카운트 실패'; h = '이카운트가 전표를 받지 않았어요 · 들어간 줄은 없어요'; sub = '부서 코드 120이 이카운트에 없어요. 이카운트에 부서를 등록하고 다시 보내거나, 업로드 파일을 받아 직접 올리세요.'; }
+      else { eb = '보낼 준비 끝'; h = `전표 ${buildLines().length}줄, 차변·대변이 맞아요`; sub = '보내기·파일 탭에서 이카운트로 보내고 SAP 업로드 파일을 받으세요.'; }
+    }
+    $('#h-eyebrow').textContent = eb; $('#h-title').textContent = h; $('#h-sub').textContent = sub;
+    $('#live').textContent = h;
+    $('#btn-close').textContent = S.closed ? '같은 마감 신호 다시 받기 (흉내)' : '급여 마감 신호 받기 (흉내)';
+  }
+  function renderSend() {
+    const ready = S.phase >= 2 && !missing(buildLines()).length;
+    const ls = S.phase >= 2 ? buildLines() : [], s = sums(ls);
+    ['ec', 'sap'].forEach(p => { $(`#${p}-lines`).textContent = S.phase >= 2 ? `${ls.length}줄` : '-'; $(`#${p}-sum`).textContent = S.phase >= 2 ? `${won(s.d)}원` : '-'; });
+    const ecTxt = { none: ready ? '보낼 준비' : (S.phase >= 2 ? '계정 확인 필요' : '전표 없음'), sending: '보내는 중', sent: '입력 완료 · 전표번호 20261031-7 (예시)', failed: '실패 · 들어간 줄 없음', file: '파일 받음' };
+    $('#ec-state').textContent = ecTxt[S.ec];
+    $('#sap-state').textContent = S.sap === 'file' ? '파일 받음' : (ready ? '파일 만들 준비' : (S.phase >= 2 ? '계정 확인 필요' : '전표 없음'));
+    $('#ec-send').disabled = !ready || S.ec === 'sending' || S.ec === 'sent';
+    $('#ec-send').textContent = S.ec === 'failed' ? '이카운트로 다시 보내기 (흉내)' : (S.ec === 'sent' ? '이미 보냄' : '이카운트로 보내기 (흉내)');
+    $('#ec-file').disabled = !ready; $('#sap-file').disabled = !ready;
+    const n = $('#ec-note');
+    if (S.ec === 'failed') { n.className = 'note bad'; n.textContent = '이카운트 응답: 부서코드 120 없음. 전표 전체를 되돌렸고 들어간 줄은 없어요. 같은 전표를 업로드 파일로 받을 수 있어요.'; }
+    else if (S.ec === 'sent') { n.className = 'note ok'; n.textContent = '이카운트에 한 전표로 들어갔어요. 같은 마감을 다시 받아도 다시 보내지 않아요.'; }
+    else { n.className = 'note'; n.textContent = '한 전표는 통째로 들어가거나 통째로 안 들어가요. 반쯤 들어간 전표는 남기지 않아요.'; }
+  }
+  function renderLog() {
+    const el = $('#log');
+    if (!S.log.length) { el.innerHTML = '<li><span class="msg" style="grid-column:1/-1;color:var(--mut)">아직 기록이 없어요.</span></li>'; return; }
+    el.innerHTML = S.log.map(r => `<li class="${r.cls}"><time class="num">${r.t}</time><span class="who">${r.who}</span><span class="msg">${r.msg}</span></li>`).join('');
+  }
+  function render() { renderSteps(); renderSlip(); renderMap(); renderSend(); renderLog(); }
+
+  // ---- 동작 ----
+  let toastT;
+  function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 2600); }
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  $('#btn-close').addEventListener('click', async () => {
+    if (S.closed) {
+      log('연동', '같은 마감(2026-10 정기 · 차수 1) 신호를 또 받았어요. 이미 처리한 마감이라 전표를 새로 만들거나 다시 보내지 않았어요.', 'skip');
+      toast('이미 처리한 마감이라 건너뛰었어요');
+      return;
+    }
+    S.closed = true; S.phase = 1; render();
+    log('아마란스10', '급여 마감 확인 · 2026년 10월 정기 급여 · 차수 1');
+    await wait(900);
+    S.phase = 2;
+    log('연동', `급여전표 조회 · 4개 부서 합계 → 전표 ${buildLines().length}줄 생성`);
+    const miss = missing(buildLines()).length;
+    if (miss) log('검증', `계정 없는 줄 ${miss}개 (야간근로수당 · 이번 달 처음 나온 항목). 보내기를 멈췄어요.`, 'bad');
+    render();
+  });
+
+  $('#btn-reset').addEventListener('click', () => { S = fresh(); $('#ec-fail').checked = false; render(); selectTab('t-slip'); toast('처음 상태로 돌렸어요'); });
+
+  $$('.seg button').forEach(b => b.addEventListener('click', () => { S.fmt = b.dataset.fmt; renderSlip(); }));
+
+  $('#map').addEventListener('change', e => {
+    const s = e.target.closest('select'); if (!s) return;
+    S.map[s.dataset.k][s.dataset.kind] = s.value;
+    if (s.dataset.k === 'night' && s.dataset.kind === 'mfg' && s.value) {
+      log('회계팀', `계정 맞춤 추가 · 야간근로수당(생산) → ${s.value} ${accts[s.value]}`);
+      if (S.phase >= 2 && !missing(buildLines()).length) { log('검증', '다시 검증 · 차변·대변 일치, 모든 줄에 계정 있음'); toast('검증 통과 · 이제 보낼 수 있어요'); }
+    }
+    render();
+  });
+
+  $('#ec-send').addEventListener('click', async () => {
+    S.ec = 'sending'; render();
+    log('연동', '이카운트로 전표 보내는 중');
+    await wait(900);
+    if ($('#ec-fail').checked) {
+      S.ec = 'failed';
+      log('이카운트', '거절 · 부서코드 120 없음 → 전표 전체 되돌림, 들어간 줄 0', 'bad');
+    } else {
+      S.ec = 'sent';
+      log('이카운트', '입력 완료 · 전표번호 20261031-7 (예시)');
+    }
+    render();
+  });
+
+  function csv(fmt) {
+    const ls = buildLines();
+    const head = HEAD[fmt === 'ecount' ? 'ecount' : 'sap'];
+    const rows = ls.map((l, i) => {
+      if (fmt === 'ecount') return ['20261031', i + 1, l.acct, l.dept ? l.dept.ec : '', l.side === 'D' ? l.amt : '', l.side === 'C' ? l.amt : '', l.memo];
+      return ['20261031', l.acct, l.dept ? l.dept.code : '', l.side === 'D' ? 'S' : 'H', l.amt, 'KRW', l.memo];
+    });
+    const esc = v => { v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    return '﻿' + ['# 제안용 데모 예시 파일 · 가상 데이터 · 실제 컬럼은 고객 양식에 맞춤', head.join(','), ...rows.map(r => r.map(esc).join(','))].join('\r\n');
+  }
+  function download(name, text) {
+    try {
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+      const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { toast('파일을 만들지 못했어요'); }
+  }
+  $('#ec-file').addEventListener('click', () => {
+    download('이카운트_급여전표_202610_예시.csv', csv('ecount'));
+    if (S.ec !== 'sent') S.ec = S.ec === 'failed' ? 'failed' : 'file';
+    log('회계팀', '이카운트 업로드 파일 받음 · 이카운트_급여전표_202610_예시.csv');
+    toast('이카운트 업로드 파일을 받았어요'); render();
+  });
+  $('#sap-file').addEventListener('click', () => {
+    download('SAP_급여전표_202610_예시.csv', csv('sap'));
+    S.sap = 'file';
+    log('회계팀', 'SAP 업로드 파일 받음 · SAP_급여전표_202610_예시.csv');
+    toast('SAP 업로드 파일을 받았어요'); render();
+  });
+
+  $('#period').addEventListener('change', e => {
+    if (e.target.value === '2026-09') { toast('9월은 이미 처리한 달이에요 · 데모에서는 10월만 볼 수 있어요'); e.target.value = '2026-10'; }
+  });
+
+  // ---- 탭 ----
+  const tabs = $$('.tab');
+  function selectTab(id) {
+    tabs.forEach(t => { const on = t.id === id; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; $('#' + t.getAttribute('aria-controls')).hidden = !on; });
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => selectTab(t.id));
+    t.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      const n = tabs[(i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+      selectTab(n.id); n.focus();
+    });
+  });
+
+  render();
+  window.__demo = { get S() { return S; }, selectTab };
+})();
+</script>
+</body>
+</html>
